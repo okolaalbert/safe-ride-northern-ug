@@ -1,3 +1,7 @@
+// Supabase public client configuration. Never put a secret/service-role key here.
+const SUPABASE_URL = "https://uiedoohybbtmdcbcwgxm.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_-ZyAW5iuBSIO24D0f54YYw_Yx3HTj-9";
+const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const STORE_KEY = "safeRideNorthernDemo_v1";
 const $ = (s, root=document) => root.querySelector(s);
 const app = $("#app");
@@ -7,6 +11,21 @@ const money = n => "UGX " + Number(n || 0).toLocaleString("en-UG");
 const save = () => localStorage.setItem(STORE_KEY, JSON.stringify(state));
 const toast = msg => { const el=$("#toast"); el.textContent=msg; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"),2600); };
 $("#year").textContent = new Date().getFullYear();
+async function checkBackend(){
+  const pill = document.querySelector(".demo-pill");
+  if (!supabaseClient) { pill.textContent = "Backend unavailable"; return; }
+  try {
+    const { error } = await supabaseClient.from("profiles").select("user_id").limit(1);
+    if (error) throw error;
+    pill.textContent = "Database connected";
+    pill.title = "Supabase API is responding. Account login and live dispatch are not yet enabled.";
+  } catch (err) {
+    pill.textContent = "Backend needs setup";
+    pill.title = "Supabase connection check failed: " + (err.message || "unknown error");
+    console.warn("Safe Ride Supabase check:", err);
+  }
+}
+checkBackend();
 function home(){app.innerHTML = `
 <section class="welcome"><div class="welcome-copy"><span class="eyebrow">MOVE WITH CONFIDENCE</span><h1>Your journey.<br><em>Your choice.</em></h1><p>Book a boda-boda or taxi with a simple, safer ride experience built for Northern Uganda.</p><div class="trust-points"><span>✓ Clear fare estimates</span><span>✓ Trip status updates</span><span>✓ Local transport options</span></div></div><div class="welcome-art" aria-hidden="true"><div class="sun"></div><div class="road"></div><div class="route-line"></div><div class="pin pin-a">A</div><div class="pin pin-b">B</div><div class="art-label">NORTHERN UGANDA</div></div></section>
 <section class="role-section"><div class="section-heading"><div><span class="eyebrow">GET STARTED</span><h2>How would you like to use Safe Ride?</h2></div><span class="step-count">01 / 02</span></div><div class="role-grid"><button class="role-card" data-role="passenger"><span class="role-icon">↗</span><strong>Book a ride</strong><small>I'm a passenger</small><span class="card-arrow">→</span></button><button class="role-card" data-role="driver"><span class="role-icon">⌁</span><strong>Drive with us</strong><small>I'm a boda or taxi driver</small><span class="card-arrow">→</span></button><button class="role-card admin-card" data-role="admin"><span class="role-icon">▦</span><strong>Admin demo</strong><small>Platform overview</small><span class="card-arrow">→</span></button></div><p class="fine-print">Demonstration mode only. Do not enter real passwords, payment details, or sensitive personal information.</p></section>`;
