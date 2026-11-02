@@ -1,0 +1,13 @@
+{
+  "name": "Safe Ride Northern UG",
+  "short_name": "Safe Ride",
+  "description": "Boda-boda and taxi ride booking for Northern Uganda.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f6f2",
+  "theme_color": "#10251d",
+  "icons": [
+    {"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
