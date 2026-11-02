@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#102b24" />
+  <meta name="description" content="Safe Ride Northern UG connects passengers with boda-boda and taxi drivers across Northern Uganda." />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Safe Ride Northern UG</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Safe Ride home">
+        <span class="brand-mark">SR</span>
+        <span><strong>Safe Ride</strong><small>Northern UG</small></span>
+      </a>
+      <div class="top-actions">
+        <span class="demo-pill">Prototype mode</span>
+        <button class="icon-button" id="installBtn" hidden>Install app</button>
+      </div>
+    </header>
+    <main id="app" class="main-content">
+      <section class="welcome">
+        <div class="welcome-copy">
+          <span class="eyebrow">MOVE WITH CONFIDENCE</span>
+          <h1>Your journey.<br><em>Your choice.</em></h1>
+          <p>Book a boda-boda or taxi with a simple, safer ride experience built for Northern Uganda.</p>
+          <div class="trust-points"><span>✓ Clear fare estimates</span><span>✓ Trip status updates</span><span>✓ Local transport options</span></div>
+        </div>
+        <div class="welcome-art" aria-hidden="true"><div class="sun"></div><div class="road"></div><div class="route-line"></div><div class="pin pin-a">A</div><div class="pin pin-b">B</div><div class="art-label">NORTHERN UGANDA</div></div>
+      </section>
+      <section class="role-section">
+        <div class="section-heading"><div><span class="eyebrow">GET STARTED</span><h2>How would you like to use Safe Ride?</h2></div><span class="step-count">01 / 02</span></div>
+        <div class="role-grid">
+          <button class="role-card" data-role="passenger"><span class="role-icon">↗</span><strong>Book a ride</strong><small>I'm a passenger</small><span class="card-arrow">→</span></button>
+          <button class="role-card" data-role="driver"><span class="role-icon">⌁</span><strong>Drive with us</strong><small>I'm a boda or taxi driver</small><span class="card-arrow">→</span></button>
+          <button class="role-card admin-card" data-role="admin"><span class="role-icon">▦</span><strong>Admin demo</strong><small>Platform overview</small><span class="card-arrow">→</span></button>
+        </div>
+        <p class="fine-print">This is a demonstration build. Do not enter real passwords, payment details, or sensitive personal information.</p>
+      </section>
+    </main>
+    <footer><span>© <span id="year"></span> Safe Ride Northern UG</span><span>Built for Northern Uganda</span></footer>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
