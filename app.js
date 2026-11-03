@@ -125,9 +125,9 @@ async function passenger(){
   <div class="tabs"><button class="tab active">My online rides</button></div><div id="rideList">Loading your rides…</div>`);
   async function loadMyRides(){
     const el=$("#rideList");
-    const {data,error}=await supabaseClient.from("rides").select("id,pickup,destination,vehicle_type,estimated_fare,status,created_at").eq("passenger_id",activeAuthUser.id).order("created_at",{ascending:false});
+    const {data,error}=await supabaseClient.from("rides").select("id,pickup_location,destination,vehicle_type,estimated_fare,status,created_at").eq("passenger_id",activeAuthUser.id).order("created_at",{ascending:false});
     if(error){el.textContent="Could not load rides: "+error.message;return;}
-    el.innerHTML=data.length?data.map(r=>rideHtml({id:String(r.id),type:r.vehicle_type==="boda"?"Boda-boda":"Taxi",from:r.pickup,to:r.destination,amount:r.estimated_fare,status:r.status})).join(""):'<div class="empty">You have not requested a ride yet.</div>';
+    el.innerHTML=data.length?data.map(r=>rideHtml({id:String(r.id),type:r.vehicle_type==="boda"?"Boda-boda":"Taxi",from:r.pickup_location,to:r.destination,amount:r.estimated_fare,status:r.status})).join(""):'<div class="empty">You have not requested a ride yet.</div>';
   }
   await loadMyRides();
   $("#estimate").onclick=()=>{
@@ -139,7 +139,7 @@ async function passenger(){
       const button=$("#confirmRide");button.disabled=true;button.textContent="Saving…";
       const {error}=await supabaseClient.from("rides").insert({
         passenger_id:activeAuthUser.id,
-        pickup:from,
+        pickup_location:from,
         destination:to,
         vehicle_type:type==="Taxi"?"taxi":"boda",
         estimated_fare:amount,
@@ -188,10 +188,10 @@ async function driver(){
   };
   async function loadAvailableRides(){
     const el=$("#driverRides");
-    const {data,error}=await supabaseClient.from("rides").select("id,pickup,destination,vehicle_type,estimated_fare,created_at").eq("status","requested").order("created_at",{ascending:false});
+    const {data,error}=await supabaseClient.from("rides").select("id,pickup_location,destination,vehicle_type,estimated_fare,created_at").eq("status","requested").order("created_at",{ascending:false});
     if(error){el.textContent="Could not load ride requests: "+error.message;return;}
     const canClaim=!!(driverProfile&&driverProfile.verified&&driverProfile.is_online);
-    el.innerHTML=data.length?data.map(r=>`<div class="ride-card"><div class="ride-top"><strong>Ride request</strong><span class="status">New request</span></div><p>${r.pickup} → ${r.destination}</p><div class="ride-top"><small>${r.vehicle_type==="boda"?"Boda-boda":"Taxi"}</small><strong>${money(r.estimated_fare)}</strong></div>${canClaim?`<button class="primary-btn wide" data-claim-ride="${r.id}">Accept this ride</button>`:"<div class='notice'>Ride acceptance is locked until an administrator verifies your driver account and sets it online.</div>"}</div>`).join(""):'<div class="empty">No available ride requests right now.</div>';
+    el.innerHTML=data.length?data.map(r=>`<div class="ride-card"><div class="ride-top"><strong>Ride request</strong><span class="status">New request</span></div><p>${r.pickup_location} → ${r.destination}</p><div class="ride-top"><small>${r.vehicle_type==="boda"?"Boda-boda":"Taxi"}</small><strong>${money(r.estimated_fare)}</strong></div>${canClaim?`<button class="primary-btn wide" data-claim-ride="${r.id}">Accept this ride</button>`:"<div class='notice'>Ride acceptance is locked until an administrator verifies your driver account and sets it online.</div>"}</div>`).join(""):'<div class="empty">No available ride requests right now.</div>';
     el.querySelectorAll("[data-claim-ride]").forEach(btn=>btn.onclick=async()=>{
       btn.disabled=true;btn.textContent="Accepting…";
       const {data:claimData,error:claimError}=await supabaseClient.rpc("claim_ride",{p_ride_id:btn.dataset.claimRide});
