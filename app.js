@@ -151,11 +151,48 @@ async function passenger(){
   };
 }
 function rideHtml(r){return `<div class="ride-card"><div class="ride-top"><strong>${r.id} · ${r.type}</strong><span class="status ${r.status==="Completed"?"done":""}">${r.status}</span></div><p>${r.from} → ${r.to}</p><div class="ride-top"><small>${r.passenger}${r.driver?" · Driver: "+r.driver:""}</small><strong>${money(r.amount)}</strong></div></div>`;}
-function driver(){shell("Driver workspace","Register a demo driver profile and manage sample ride requests.",`
-<div class="form-grid"><div class="field"><label>Driver name</label><input id="dname" placeholder="Your name"></div><div class="field"><label>Phone number</label><input id="dphone" placeholder="+256 7XX XXX XXX"></div><div class="field"><label>Vehicle</label><select id="dtype"><option>Boda-boda</option><option>Taxi</option></select></div><div class="field"><label>Operating town</label><input id="town" placeholder="e.g. Gulu"></div></div><button class="primary-btn wide" id="registerDriver">Save demo driver profile</button><div class="notice">Real driver identity checks, licence verification, and approval workflows must be connected to a secure backend before launch.</div><div class="tabs"><button class="tab active">Available demo requests</button></div><div id="driverRides"></div>`);
-$("#registerDriver").onclick=()=>{const name=$("#dname").value.trim(),phone=$("#dphone").value.trim();if(!name||!phone){toast("Enter driver name and phone.");return;}state.user={role:"driver",name,phone,vehicle:$("#dtype").value,town:$("#town").value.trim()};if(!state.drivers.some(d=>d.phone===phone))state.drivers.push({...state.user,approved:false,online:true});save();toast("Demo driver profile saved.");renderDriverRides();};
-function renderDriverRides(){const el=$("#driverRides");if(!el)return;const pending=state.rides.filter(r=>r.status==="Searching for driver");el.innerHTML=pending.length?pending.map(r=>`<div class="ride-card"><div class="ride-top"><strong>${r.id} · ${r.type}</strong><span class="status">New request</span></div><p>${r.from} → ${r.to}</p><div class="ride-top"><small>${r.passenger}</small><strong>${money(r.amount)}</strong></div><div class="button-row"><button class="small-btn good" data-accept="${r.id}">Accept</button><button class="small-btn" data-reject="${r.id}">Skip</button></div></div>`).join(""):'<div class="empty">No unassigned demo rides right now.</div>';el.querySelectorAll("[data-accept]").forEach(b=>b.onclick=()=>{if(!state.user||state.user.role!=="driver"){toast("Save your driver profile first.");return;}const r=state.rides.find(x=>x.id===b.dataset.accept);r.status="Driver assigned";r.driver=state.user.name;save();renderDriverRides();toast("Demo ride accepted.");});el.querySelectorAll("[data-reject]").forEach(b=>b.onclick=()=>{toast("Request skipped in this demo.");});}
-renderDriverRides();}
+async function driver(){
+  if(!activeAuthUser){authGate("driver","login");return;}
+  const meta=activeAuthUser.user_metadata||{};
+  shell("Driver workspace","Register your vehicle and view ride requests saved online.",`
+    <div class="form-grid">
+      <div class="field"><label>Driver name</label><input id="dname" value="${(meta.full_name||"").replace(/"/g,"&quot;")}" readonly></div>
+      <div class="field"><label>Phone number</label><input id="dphone" value="${(meta.phone||"").replace(/"/g,"&quot;")}" readonly></div>
+      <div class="field"><label>Vehicle</label><select id="dtype"><option value="boda">Boda-boda</option><option value="taxi">Taxi</option></select></div>
+      <div class="field"><label>Vehicle registration</label><input id="vehicleReg" placeholder="e.g. UEX 123A" maxlength="20"></div>
+    </div>
+    <button class="primary-btn wide" id="registerDriver">Save driver profile online</button>
+    <div class="notice">New drivers remain unverified until an administrator completes the required checks. Only verified drivers should be dispatched for real trips.</div>
+    <div class="tabs"><button class="tab active">Available online requests</button></div><div id="driverRides">Loading ride requests…</div>`);
+  async function loadDriverProfile(){
+    const {data,error}=await supabaseClient.from("drivers").select("vehicle_type,vehicle_registration,verified,is_online").eq("user_id",activeAuthUser.id).maybeSingle();
+    if(error){toast("Could not load driver profile: "+error.message);return;}
+    if(data){
+      $("#dtype").value=data.vehicle_type;
+      $("#vehicleReg").value=data.vehicle_registration||"";
+      $("#registerDriver").textContent="Update driver profile";
+    }
+  }
+  $("#registerDriver").onclick=async()=>{
+    const registration=$("#vehicleReg").value.trim();
+    if(!registration){toast("Enter your vehicle registration.");return;}
+    const vehicle=$("#dtype").value;
+    const btn=$("#registerDriver");btn.disabled=true;btn.textContent="Saving…";
+    const payload={user_id:activeAuthUser.id,vehicle_type:vehicle,vehicle_registration:registration,verified:false,is_online:false};
+    const {error}=await supabaseClient.from("drivers").upsert(payload,{onConflict:"user_id"});
+    if(error){toast("Driver profile not saved: "+error.message);btn.disabled=false;btn.textContent="Save driver profile online";return;}
+    toast("Driver profile saved. Verification is still required.");
+    btn.disabled=false;btn.textContent="Update driver profile";
+  };
+  async function loadAvailableRides(){
+    const el=$("#driverRides");
+    const {data,error}=await supabaseClient.from("rides").select("id,pickup,destination,vehicle_type,estimated_fare,created_at").eq("status","requested").order("created_at",{ascending:false});
+    if(error){el.textContent="Could not load ride requests: "+error.message;return;}
+    el.innerHTML=data.length?data.map(r=>`<div class="ride-card"><div class="ride-top"><strong>Ride #${r.id}</strong><span class="status">New request</span></div><p>${r.pickup} → ${r.destination}</p><div class="ride-top"><small>${r.vehicle_type==="boda"?"Boda-boda":"Taxi"}</small><strong>${money(r.estimated_fare)}</strong></div></div>`).join(""):'<div class="empty">No available ride requests right now.</div>';
+  }
+  await loadDriverProfile();
+  await loadAvailableRides();
+}
 function admin(){shell("Admin overview","Sample platform activity stored only in this browser. This is not a secured admin console.",`
 <div class="stats"><div class="stat"><small>Demo rides</small><strong id="sRides">0</strong></div><div class="stat"><small>Driver profiles</small><strong id="sDrivers">0</strong></div><div class="stat"><small>Completed trips</small><strong id="sDone">0</strong></div></div><div class="tabs"><button class="tab active" id="tabRides">Ride requests</button><button class="tab" id="tabDrivers">Drivers</button></div><div id="adminList"></div><div class="notice">Production admin access must be protected by server-side roles and authentication. This local demo panel has no real security and must not be used to monitor real customers.</div>`);
 $("#sRides").textContent=state.rides.length;$("#sDrivers").textContent=state.drivers.length;$("#sDone").textContent=state.rides.filter(r=>r.status==="Completed").length;
