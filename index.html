@@ -8,6 +8,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <title>Safe Ride Northern UG</title>
 </head>
 <body>
@@ -45,8 +46,9 @@
     <footer><span>© <span id="year"></span> Safe Ride Northern UG</span><span>Built for Northern Uganda</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./app.js?v=9"></script>
+  <script src="./app.js?v=10"></script>
   <script>
     (async function () {
       const pill = document.querySelector(".demo-pill");
