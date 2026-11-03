@@ -272,12 +272,14 @@ async function adminDashboard(){
     const profiles = new Map((profilesData || []).map(p => [p.user_id, p]));
     const rows = (driversData || []).map(d => ({
       ...d,
+      verified: d.verified === true || String(d.verified).toLowerCase() === "true",
+      is_online: d.is_online === true || String(d.is_online).toLowerCase() === "true",
       profile: profiles.get(d.user_id) || {}
     }));
 
     $("#adminTotal").textContent = rows.length;
-    $("#adminApproved").textContent = rows.filter(d => d.verified).length;
-    $("#adminOnline").textContent = rows.filter(d => d.is_online).length;
+    $("#adminApproved").textContent = rows.filter(d => d.verified === true).length;
+    $("#adminOnline").textContent = rows.filter(d => d.is_online === true).length;
 
     if (!rows.length) {
       list.innerHTML = '<div class="empty">No driver records found in the database.</div>';
