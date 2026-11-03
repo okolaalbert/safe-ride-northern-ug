@@ -164,9 +164,11 @@ async function driver(){
     <button class="primary-btn wide" id="registerDriver">Save driver profile online</button>
     <div class="notice">New drivers remain unverified until an administrator completes the required checks. Only verified drivers should be dispatched for real trips.</div>
     <div class="tabs"><button class="tab active">Available online requests</button></div><div id="driverRides">Loading ride requests…</div>`);
+  let driverProfile = null;
   async function loadDriverProfile(){
     const {data,error}=await supabaseClient.from("drivers").select("vehicle_type,vehicle_registration,verified,is_online").eq("user_id",activeAuthUser.id).maybeSingle();
     if(error){toast("Could not load driver profile: "+error.message);return;}
+    driverProfile = data;
     if(data){
       $("#dtype").value=data.vehicle_type;
       $("#vehicleReg").value=data.vehicle_registration||"";
@@ -188,7 +190,15 @@ async function driver(){
     const el=$("#driverRides");
     const {data,error}=await supabaseClient.from("rides").select("id,pickup,destination,vehicle_type,estimated_fare,created_at").eq("status","requested").order("created_at",{ascending:false});
     if(error){el.textContent="Could not load ride requests: "+error.message;return;}
-    el.innerHTML=data.length?data.map(r=>`<div class="ride-card"><div class="ride-top"><strong>Ride #${r.id}</strong><span class="status">New request</span></div><p>${r.pickup} → ${r.destination}</p><div class="ride-top"><small>${r.vehicle_type==="boda"?"Boda-boda":"Taxi"}</small><strong>${money(r.estimated_fare)}</strong></div></div>`).join(""):'<div class="empty">No available ride requests right now.</div>';
+    const canClaim=!!(driverProfile&&driverProfile.verified&&driverProfile.is_online);
+    el.innerHTML=data.length?data.map(r=>`<div class="ride-card"><div class="ride-top"><strong>Ride request</strong><span class="status">New request</span></div><p>${r.pickup} → ${r.destination}</p><div class="ride-top"><small>${r.vehicle_type==="boda"?"Boda-boda":"Taxi"}</small><strong>${money(r.estimated_fare)}</strong></div>${canClaim?`<button class="primary-btn wide" data-claim-ride="${r.id}">Accept this ride</button>`:"<div class='notice'>Ride acceptance is locked until an administrator verifies your driver account and sets it online.</div>"}</div>`).join(""):'<div class="empty">No available ride requests right now.</div>';
+    el.querySelectorAll("[data-claim-ride]").forEach(btn=>btn.onclick=async()=>{
+      btn.disabled=true;btn.textContent="Accepting…";
+      const {data:claimData,error:claimError}=await supabaseClient.rpc("claim_ride",{p_ride_id:btn.dataset.claimRide});
+      if(claimError){toast("Could not accept ride: "+claimError.message);btn.disabled=false;btn.textContent="Accept this ride";return;}
+      toast("Ride accepted successfully.");
+      await loadAvailableRides();
+    });
   }
   await loadDriverProfile();
   await loadAvailableRides();
