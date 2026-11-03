@@ -18,7 +18,7 @@ async function checkBackend(){
     const { error } = await supabaseClient.from("profiles").select("user_id").limit(1);
     if (error) throw error;
     pill.textContent = "Database connected";
-    pill.title = "Supabase API is responding. Account login and live dispatch are not yet enabled.";
+    pill.title = "Supabase database is responding.";
   } catch (err) {
     pill.textContent = "Backend needs setup";
     pill.title = "Supabase connection check failed: " + (err.message || "unknown error");
@@ -103,16 +103,53 @@ async function restoreAuth(){
     save();
   }
 }
-\nfunction home(){app.innerHTML = `
+function home(){app.innerHTML = `
 <section class="welcome"><div class="welcome-copy"><span class="eyebrow">MOVE WITH CONFIDENCE</span><h1>Your journey.<br><em>Your choice.</em></h1><p>Book a boda-boda or taxi with a simple, safer ride experience built for Northern Uganda.</p><div class="trust-points"><span>✓ Clear fare estimates</span><span>✓ Trip status updates</span><span>✓ Local transport options</span></div></div><div class="welcome-art" aria-hidden="true"><div class="sun"></div><div class="road"></div><div class="route-line"></div><div class="pin pin-a">A</div><div class="pin pin-b">B</div><div class="art-label">NORTHERN UGANDA</div></div></section>
 <section class="role-section"><div class="section-heading"><div><span class="eyebrow">GET STARTED</span><h2>How would you like to use Safe Ride?</h2></div><span class="step-count">01 / 02</span></div><div class="role-grid"><button class="role-card" data-role="passenger"><span class="role-icon">↗</span><strong>Book a ride</strong><small>I'm a passenger</small><span class="card-arrow">→</span></button><button class="role-card" data-role="driver"><span class="role-icon">⌁</span><strong>Drive with us</strong><small>I'm a boda or taxi driver</small><span class="card-arrow">→</span></button><button class="role-card admin-card" data-role="admin"><span class="role-icon">▦</span><strong>Admin demo</strong><small>Platform overview</small><span class="card-arrow">→</span></button></div><p class="fine-print">Demonstration mode only. Do not enter real passwords, payment details, or sensitive personal information.</p></section>`;
 app.querySelectorAll("[data-role]").forEach(b=>b.onclick=()=>b.dataset.role==="admin"?admin():authGate(b.dataset.role));}
 function shell(title,sub,body){app.innerHTML=`<section class="panel"><button class="back-btn" id="back">← Back to home</button><div class="panel-head"><div><span class="eyebrow">SAFE RIDE NORTHERN UG</span><h2>${title}</h2><p>${sub}</p></div><span class="tag">DEMO</span></div>${body}</section>` ;$("#back").onclick=home;}
 function fare(type,from,to){const base=type==="Taxi"?5000:1500; const a=(from.length+to.length)%7; return base+a*(type==="Taxi"?1000:500)+ (type==="Taxi"?3000:1000);}
-function passenger(){shell("Book your ride","Enter your route and choose the transport that suits your journey.",`
-<div class="form-grid"><div class="field full"><label>Your name</label><input id="pname" placeholder="Passenger name" maxlength="50"></div><div class="field"><label>Pickup location</label><input id="pickup" placeholder="e.g. Gulu Main Market"></div><div class="field"><label>Destination</label><input id="destination" placeholder="e.g. Lacor Hospital"></div><div class="field"><label>Ride type</label><select id="rideType"><option>Boda-boda</option><option>Taxi</option></select></div><div class="field"><label>Payment preference</label><select id="payment"><option>Cash</option><option>MTN Mobile Money (coming soon)</option><option>Airtel Money (coming soon)</option></select></div></div><div class="notice">Fare shown is an illustrative estimate for this prototype. A production version will calculate distance and price using a real maps/routing service.</div><button class="primary-btn wide" id="estimate">Estimate fare</button><div id="fareResult"></div><div class="tabs"><button class="tab active" id="myRides">My demo rides</button></div><div id="rideList"></div>`);
-const list=()=>{const mine=state.rides.filter(r=>r.passenger===($("#pname")?.value.trim()||"Guest"));$("#rideList").innerHTML=mine.length?mine.slice().reverse().map(rideHtml).join(""):'<div class="empty">Your demo ride requests will appear here.</div>';};list();
-$("#estimate").onclick=()=>{const name=$("#pname").value.trim()||"Guest",from=$("#pickup").value.trim(),to=$("#destination").value.trim(),type=$("#rideType").value;if(!from||!to){toast("Enter both pickup and destination.");return;}const amount=fare(type,from,to);$("#fareResult").innerHTML=`<div class="ride-card"><div class="ride-top"><strong>Estimated fare</strong><span class="tag">${type}</span></div><h2>${money(amount)}</h2><p>${from} → ${to}</p><button class="primary-btn wide" id="confirmRide">Request demo ride</button></div>`;$("#confirmRide").onclick=()=>{state.rides.push({id:"SR-"+Date.now().toString().slice(-6),passenger:name,from,to,type,amount,status:"Searching for driver",created:new Date().toISOString(),driver:""});save();toast("Demo ride request created.");list();$("#fareResult").innerHTML="";};};}
+async function passenger(){
+  if(!activeAuthUser){authGate("passenger","login");return;}
+  const profile=activeAuthUser.user_metadata||{};
+  shell("Book your ride","Your ride requests will be saved to your online account.",`
+  <div class="form-grid">
+    <div class="field full"><label>Your name</label><input id="pname" value="${(profile.full_name||"").replace(/"/g,"&quot;")}" readonly></div>
+    <div class="field"><label>Pickup location</label><input id="pickup" placeholder="e.g. Gulu Main Market" required></div>
+    <div class="field"><label>Destination</label><input id="destination" placeholder="e.g. Lacor Hospital" required></div>
+    <div class="field"><label>Ride type</label><select id="rideType"><option>Boda-boda</option><option>Taxi</option></select></div>
+    <div class="field"><label>Payment preference</label><select id="payment"><option>Cash</option><option>MTN Mobile Money (coming soon)</option><option>Airtel Money (coming soon)</option></select></div>
+  </div>
+  <div class="notice">The fare is currently an illustrative estimate, not a distance-based quote. Payment integrations are not active.</div>
+  <button class="primary-btn wide" id="estimate">Estimate fare</button><div id="fareResult"></div>
+  <div class="tabs"><button class="tab active">My online rides</button></div><div id="rideList">Loading your rides…</div>`);
+  async function loadMyRides(){
+    const el=$("#rideList");
+    const {data,error}=await supabaseClient.from("rides").select("id,pickup,destination,vehicle_type,estimated_fare,status,created_at").eq("passenger_id",activeAuthUser.id).order("created_at",{ascending:false});
+    if(error){el.textContent="Could not load rides: "+error.message;return;}
+    el.innerHTML=data.length?data.map(r=>rideHtml({id:String(r.id),type:r.vehicle_type==="boda"?"Boda-boda":"Taxi",from:r.pickup,to:r.destination,amount:r.estimated_fare,status:r.status})).join(""):'<div class="empty">You have not requested a ride yet.</div>';
+  }
+  await loadMyRides();
+  $("#estimate").onclick=()=>{
+    const from=$("#pickup").value.trim(),to=$("#destination").value.trim(),type=$("#rideType").value;
+    if(!from||!to){toast("Enter both pickup and destination.");return;}
+    const amount=fare(type,from,to);
+    $("#fareResult").innerHTML=`<div class="ride-card"><div class="ride-top"><strong>Illustrative fare</strong><span class="tag">${type}</span></div><h2>${money(amount)}</h2><p>${from} → ${to}</p><button class="primary-btn wide" id="confirmRide">Save ride request online</button></div>`;
+    $("#confirmRide").onclick=async()=>{
+      const button=$("#confirmRide");button.disabled=true;button.textContent="Saving…";
+      const {error}=await supabaseClient.from("rides").insert({
+        passenger_id:activeAuthUser.id,
+        pickup:from,
+        destination:to,
+        vehicle_type:type==="Taxi"?"taxi":"boda",
+        estimated_fare:amount,
+        status:"requested"
+      });
+      if(error){toast("Ride not saved: "+error.message);button.disabled=false;button.textContent="Save ride request online";return;}
+      toast("Your ride request was saved online.");$("#fareResult").innerHTML="";await loadMyRides();
+    };
+  };
+}
 function rideHtml(r){return `<div class="ride-card"><div class="ride-top"><strong>${r.id} · ${r.type}</strong><span class="status ${r.status==="Completed"?"done":""}">${r.status}</span></div><p>${r.from} → ${r.to}</p><div class="ride-top"><small>${r.passenger}${r.driver?" · Driver: "+r.driver:""}</small><strong>${money(r.amount)}</strong></div></div>`;}
 function driver(){shell("Driver workspace","Register a demo driver profile and manage sample ride requests.",`
 <div class="form-grid"><div class="field"><label>Driver name</label><input id="dname" placeholder="Your name"></div><div class="field"><label>Phone number</label><input id="dphone" placeholder="+256 7XX XXX XXX"></div><div class="field"><label>Vehicle</label><select id="dtype"><option>Boda-boda</option><option>Taxi</option></select></div><div class="field"><label>Operating town</label><input id="town" placeholder="e.g. Gulu"></div></div><button class="primary-btn wide" id="registerDriver">Save demo driver profile</button><div class="notice">Real driver identity checks, licence verification, and approval workflows must be connected to a secure backend before launch.</div><div class="tabs"><button class="tab active">Available demo requests</button></div><div id="driverRides"></div>`);
