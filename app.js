@@ -28,6 +28,82 @@ async function checkBackend(){
 checkBackend();
 
 let activeAuthUser = null;
+let driverGpsWatchId = null;
+let driverGpsMap = null;
+let driverGpsMarker = null;
+function stopDriverGps(){
+  if(driverGpsWatchId !== null && navigator.geolocation){
+    navigator.geolocation.clearWatch(driverGpsWatchId);
+    driverGpsWatchId = null;
+  }
+}
+function renderDriverGpsMap(lat,lng){
+  const el=$("#driverGpsMap");
+  if(!el || !window.L) return;
+  if(!driverGpsMap){
+    driverGpsMap=L.map(el).setView([lat,lng],15);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+      maxZoom:19,
+      attribution:"© OpenStreetMap contributors"
+    }).addTo(driverGpsMap);
+    driverGpsMarker=L.marker([lat,lng]).addTo(driverGpsMap).bindPopup("Your current location");
+  }else{
+    driverGpsMarker.setLatLng([lat,lng]);
+    driverGpsMap.setView([lat,lng],15);
+  }
+}
+async function startDriverGps(){
+  if(!navigator.geolocation){toast("GPS is not supported by this browser.");return;}
+  if(!driverGpsMap) driverGpsMap=null;
+  const status=$("#driverGpsStatus");
+  const button=$("#startDriverGps");
+  if(button){button.disabled=true;button.textContent="Starting GPS…";}
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    try{
+      const {error}=await supabaseClient.from("driver_locations").upsert({
+        driver_id:activeAuthUser.id,
+        latitude:pos.coords.latitude,
+        longitude:pos.coords.longitude,
+        updated_at:new Date().toISOString()
+      },{onConflict:"driver_id"});
+      if(error) throw error;
+      renderDriverGpsMap(pos.coords.latitude,pos.coords.longitude);
+      if(status) status.textContent="Location sharing is active.";
+      if(button){button.disabled=false;button.textContent="GPS sharing active";}
+      if(driverGpsWatchId===null){
+        driverGpsWatchId=navigator.geolocation.watchPosition(async p=>{
+          const {error:updateError}=await supabaseClient.from("driver_locations").upsert({
+            driver_id:activeAuthUser.id,
+            latitude:p.coords.latitude,
+            longitude:p.coords.longitude,
+            updated_at:new Date().toISOString()
+          },{onConflict:"driver_id"});
+          if(updateError){console.warn("GPS update failed:",updateError.message);return;}
+          renderDriverGpsMap(p.coords.latitude,p.coords.longitude);
+        },err=>{if(status)status.textContent="GPS error: "+err.message;},{
+          enableHighAccuracy:true,maximumAge:5000,timeout:20000
+        });
+      }
+    }catch(err){
+      if(status)status.textContent="Could not share location: "+err.message;
+      if(button){button.disabled=false;button.textContent="Start sharing GPS";}
+    }
+  },err=>{
+    if(status)status.textContent="GPS permission/error: "+err.message;
+    if(button){button.disabled=false;button.textContent="Start sharing GPS";}
+  },{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+}
+async function stopDriverGpsSharing(){
+  stopDriverGps();
+  const {error}=await supabaseClient.from("driver_locations").delete().eq("driver_id",activeAuthUser.id);
+  if(error){toast("GPS stopped on this phone, but location could not be cleared: "+error.message);}
+  else toast("Live location sharing stopped.");
+  const status=$("#driverGpsStatus");
+  const button=$("#startDriverGps");
+  if(status)status.textContent="Location sharing is stopped.";
+  if(button){button.disabled=false;button.textContent="Start sharing GPS";}
+  driverGpsMap=null;driverGpsMarker=null;
+}
 const SITE_URL = "https://okolaalbert.github.io/safe-ride-northern-ug/";
 async function authGate(role, mode="signup"){
   const roleLabel = role === "driver" ? "Driver" : "Passenger";
@@ -163,12 +239,26 @@ async function driver(){
     </div>
     <button class="primary-btn wide" id="registerDriver">Save driver profile online</button>
     <div class="notice">New drivers remain unverified until an administrator completes the required checks. Only verified drivers should be dispatched for real trips.</div>
+    <div class="ride-card">
+      <strong>Live GPS sharing</strong>
+      <p id="driverGpsStatus">GPS sharing is available when your account is verified and set online.</p>
+      <button class="primary-btn wide" id="startDriverGps" disabled>GPS unavailable until approved and online</button>
+      <button class="small-btn" id="stopDriverGps">Stop sharing location</button>
+      <div id="driverGpsMap" style="height:260px;margin-top:12px;border-radius:12px;overflow:hidden;background:#edf2eb"></div>
+      <small>Share your location only while working and with your permission. Your phone may ask you to allow location access.</small>
+    </div>
     <div class="tabs"><button class="tab active">Available online requests</button></div><div id="driverRides">Loading ride requests…</div>`);
   let driverProfile = null;
   async function loadDriverProfile(){
     const {data,error}=await supabaseClient.from("drivers").select("vehicle_type,vehicle_registration,verified,is_online").eq("user_id",activeAuthUser.id).maybeSingle();
     if(error){toast("Could not load driver profile: "+error.message);return;}
     driverProfile = data;
+    const gpsButton=$("#startDriverGps");
+    if(gpsButton && data && data.verified && data.is_online){
+      gpsButton.disabled=false;
+      gpsButton.textContent="Start sharing GPS";
+      $("#driverGpsStatus").textContent="Your account is approved and online. Start sharing when ready.";
+    }
     if(data){
       $("#dtype").value=data.vehicle_type;
       $("#vehicleReg").value=data.vehicle_registration||"";
@@ -200,6 +290,8 @@ async function driver(){
       await loadAvailableRides();
     });
   }
+  $("#startDriverGps").onclick=startDriverGps;
+  $("#stopDriverGps").onclick=stopDriverGpsSharing;
   await loadDriverProfile();
   await loadAvailableRides();
 }
