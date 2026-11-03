@@ -106,7 +106,7 @@ async function restoreAuth(){
 function home(){app.innerHTML = `
 <section class="welcome"><div class="welcome-copy"><span class="eyebrow">MOVE WITH CONFIDENCE</span><h1>Your journey.<br><em>Your choice.</em></h1><p>Book a boda-boda or taxi with a simple, safer ride experience built for Northern Uganda.</p><div class="trust-points"><span>✓ Clear fare estimates</span><span>✓ Trip status updates</span><span>✓ Local transport options</span></div></div><div class="welcome-art" aria-hidden="true"><div class="sun"></div><div class="road"></div><div class="route-line"></div><div class="pin pin-a">A</div><div class="pin pin-b">B</div><div class="art-label">NORTHERN UGANDA</div></div></section>
 <section class="role-section"><div class="section-heading"><div><span class="eyebrow">GET STARTED</span><h2>How would you like to use Safe Ride?</h2></div><span class="step-count">01 / 02</span></div><div class="role-grid"><button class="role-card" data-role="passenger"><span class="role-icon">↗</span><strong>Book a ride</strong><small>I'm a passenger</small><span class="card-arrow">→</span></button><button class="role-card" data-role="driver"><span class="role-icon">⌁</span><strong>Drive with us</strong><small>I'm a boda or taxi driver</small><span class="card-arrow">→</span></button><button class="role-card admin-card" data-role="admin"><span class="role-icon">▦</span><strong>Admin demo</strong><small>Platform overview</small><span class="card-arrow">→</span></button></div><p class="fine-print">Demonstration mode only. Do not enter real passwords, payment details, or sensitive personal information.</p></section>`;
-app.querySelectorAll("[data-role]").forEach(b=>b.onclick=()=>b.dataset.role==="admin"?admin():authGate(b.dataset.role));}
+app.querySelectorAll("[data-role]").forEach(b=>b.onclick=()=>b.dataset.role==="admin"?adminLogin():authGate(b.dataset.role));}
 function shell(title,sub,body){app.innerHTML=`<section class="panel"><button class="back-btn" id="back">← Back to home</button><div class="panel-head"><div><span class="eyebrow">SAFE RIDE NORTHERN UG</span><h2>${title}</h2><p>${sub}</p></div><span class="tag">DEMO</span></div>${body}</section>` ;$("#back").onclick=home;}
 function fare(type,from,to){const base=type==="Taxi"?5000:1500; const a=(from.length+to.length)%7; return base+a*(type==="Taxi"?1000:500)+ (type==="Taxi"?3000:1000);}
 async function passenger(){
@@ -203,13 +203,94 @@ async function driver(){
   await loadDriverProfile();
   await loadAvailableRides();
 }
-function admin(){shell("Admin overview","Sample platform activity stored only in this browser. This is not a secured admin console.",`
-<div class="stats"><div class="stat"><small>Demo rides</small><strong id="sRides">0</strong></div><div class="stat"><small>Driver profiles</small><strong id="sDrivers">0</strong></div><div class="stat"><small>Completed trips</small><strong id="sDone">0</strong></div></div><div class="tabs"><button class="tab active" id="tabRides">Ride requests</button><button class="tab" id="tabDrivers">Drivers</button></div><div id="adminList"></div><div class="notice">Production admin access must be protected by server-side roles and authentication. This local demo panel has no real security and must not be used to monitor real customers.</div>`);
-$("#sRides").textContent=state.rides.length;$("#sDrivers").textContent=state.drivers.length;$("#sDone").textContent=state.rides.filter(r=>r.status==="Completed").length;
-const rides=()=>{$("#adminList").innerHTML=state.rides.length?state.rides.slice().reverse().map(r=>`<div class="ride-card"><div class="ride-top"><strong>${r.id} · ${r.type}</strong><span class="status ${r.status==="Completed"?"done":""}">${r.status}</span></div><p>${r.passenger}: ${r.from} → ${r.to}</p><div class="ride-top"><small>${r.driver||"No driver assigned"}</small><strong>${money(r.amount)}</strong></div><div class="button-row"><button class="small-btn" data-complete="${r.id}">Mark completed</button><button class="small-btn" data-cancel="${r.id}">Cancel</button></div></div>`).join(""):'<div class="empty">No demo rides have been requested yet.</div>';$("#adminList").querySelectorAll("[data-complete]").forEach(b=>b.onclick=()=>changeRide(b.dataset.complete,"Completed"));$("#adminList").querySelectorAll("[data-cancel]").forEach(b=>b.onclick=()=>changeRide(b.dataset.cancel,"Cancelled"));};
-const drivers=()=>{$("#adminList").innerHTML=state.drivers.length?state.drivers.map(d=>`<div class="ride-card"><div class="ride-top"><strong>${d.name}</strong><span class="status ${d.approved?"done":""}">${d.approved?"Approved demo":"Pending review"}</span></div><p>${d.vehicle} · ${d.town||"Town not set"} · ${d.phone}</p><button class="small-btn good" data-approve="${d.phone}">Toggle demo approval</button></div>`).join(""):'<div class="empty">No demo driver profiles yet.</div>';$("#adminList").querySelectorAll("[data-approve]").forEach(b=>b.onclick=()=>{const d=state.drivers.find(x=>x.phone===b.dataset.approve);d.approved=!d.approved;save();drivers();});};
-function changeRide(id,status){const r=state.rides.find(x=>x.id===id);if(r){r.status=status;save();$("#sDone").textContent=state.rides.filter(x=>x.status==="Completed").length;rides();toast("Demo ride updated.");}}
-$("#tabRides").onclick=()=>{$("#tabRides").classList.add("active");$("#tabDrivers").classList.remove("active");rides();};$("#tabDrivers").onclick=()=>{$("#tabDrivers").classList.add("active");$("#tabRides").classList.remove("active");drivers();};rides();}
+
+async function adminLogin(){
+  if(!activeAuthUser){
+    shell("Administrator sign in","Sign in with the administrator account approved for this platform.",`
+      <form id="adminLoginForm" class="form-grid">
+        <div class="field full"><label>Administrator email</label><input id="adminEmail" type="email" autocomplete="username" required></div>
+        <div class="field full"><label>Password</label><input id="adminPassword" type="password" autocomplete="current-password" required></div>
+        <div class="field full"><button class="primary-btn wide" type="submit">Sign in as administrator</button></div>
+      </form><div id="adminLoginMessage" class="notice">Administrator access is restricted to approved accounts.</div>`);
+    $("#adminLoginForm").onsubmit=async e=>{
+      e.preventDefault();
+      const btn=$("#adminLoginForm button[type=submit]"),msg=$("#adminLoginMessage");
+      btn.disabled=true;btn.textContent="Checking account…";
+      try{
+        const {data,error}=await supabaseClient.auth.signInWithPassword({email:$("#adminEmail").value.trim(),password:$("#adminPassword").value});
+        if(error)throw error;
+        const {data:adminRecord,error:adminError}=await supabaseClient.from("admin_users").select("user_id").eq("user_id",data.user.id).maybeSingle();
+        if(adminError)throw adminError;
+        if(!adminRecord){await supabaseClient.auth.signOut();activeAuthUser=null;throw new Error("This account does not have administrator permission.");}
+        activeAuthUser=data.user;
+        state.user={role:"admin",name:data.user.email};save();
+        adminDashboard();
+      }catch(err){msg.textContent=err.message||"Administrator sign in failed.";btn.disabled=false;btn.textContent="Sign in as administrator";}
+    };
+    return;
+  }
+  const {data:record,error}=await supabaseClient.from("admin_users").select("user_id").eq("user_id",activeAuthUser.id).maybeSingle();
+  if(error||!record){activeAuthUser=null;adminLogin();return;}
+  adminDashboard();
+}
+async function adminDashboard(){
+  shell("Driver approval centre","Review driver registrations, approve trusted drivers, and control who can go online.",`
+    <div class="stats">
+      <div class="stat"><small>Driver applications</small><strong id="adminTotal">—</strong></div>
+      <div class="stat"><small>Approved drivers</small><strong id="adminApproved">—</strong></div>
+      <div class="stat"><small>Online drivers</small><strong id="adminOnline">—</strong></div>
+    </div>
+    <div class="tabs"><button class="tab active" id="refreshAdmin">Refresh applications</button><button class="tab" id="adminLogout">Sign out</button></div>
+    <div id="realAdminList">Loading driver applications…</div>
+    <div class="notice">Only this signed-in administrator account can approve drivers. Drivers cannot approve themselves.</div>`);
+  $("#adminLogout").onclick=async()=>{await supabaseClient.auth.signOut();activeAuthUser=null;state.user=null;save();home();};
+  $("#refreshAdmin").onclick=loadAdminDrivers;
+  async function loadAdminDrivers(){
+    const list=$("#realAdminList");list.textContent="Loading driver applications…";
+    const [{data:driversData,error:driversError},{data:profilesData,error:profilesError}]=await Promise.all([
+      supabaseClient.from("drivers").select("user_id,vehicle_type,vehicle_registration,verified,is_online").order("user_id"),
+      supabaseClient.from("profiles").select("user_id,full_name,phone,account_type").eq("account_type","driver")
+    ]);
+    if(driversError||profilesError){list.textContent="Could not load applications: "+(driversError?.message||profilesError?.message);return;}
+    const profiles=new Map((profilesData||[]).map(p=>[p.user_id,p]));
+    const rows=(driversData||[]).map(d=>({ ...d, profile:profiles.get(d.user_id)||{} }));
+    $("#adminTotal").textContent=rows.length;
+    $("#adminApproved").textContent=rows.filter(d=>d.verified).length;
+    $("#adminOnline").textContent=rows.filter(d=>d.is_online).length;
+    if(!rows.length){list.innerHTML='<div class="empty">No driver applications have been submitted yet.</div>';return;}
+    list.innerHTML=rows.map(d=>`
+      <div class="ride-card">
+        <div class="ride-top"><strong>${escapeHtml(d.profile.full_name||"Driver")}</strong><span class="status ${d.verified?"done":""}">${d.verified?"Approved":"Pending approval"}</span></div>
+        <p>${escapeHtml(d.profile.phone||"No phone provided")} · ${escapeHtml(d.vehicle_type||"Vehicle not set")} · ${escapeHtml(d.vehicle_registration||"No registration")}</p>
+        <p><small>Driver account: ${escapeHtml(d.user_id)}</small></p>
+        <div class="button-row">
+          <button class="small-btn good" data-approve-driver="${d.user_id}" data-approve-value="true" ${d.verified?"disabled":""}>Approve driver</button>
+          <button class="small-btn" data-approve-driver="${d.user_id}" data-approve-value="false" ${!d.verified?"disabled":""}>Revoke approval</button>
+          <button class="small-btn" data-online-driver="${d.user_id}" data-online-value="${d.is_online?"false":"true"}" ${!d.verified?"disabled":""}>${d.is_online?"Set offline":"Set online"}</button>
+        </div>
+      </div>`).join("");
+    list.querySelectorAll("[data-approve-driver]").forEach(btn=>btn.onclick=async()=>{
+      btn.disabled=true;
+      const userId=btn.dataset.approveDriver,approved=btn.dataset.approveValue==="true";
+      const {error}=await supabaseClient.from("drivers").update({verified:approved,is_online:false}).eq("user_id",userId);
+      if(error){toast("Could not update approval: "+error.message);btn.disabled=false;return;}
+      toast(approved?"Driver approved.":"Driver approval revoked.");
+      await loadAdminDrivers();
+    });
+    list.querySelectorAll("[data-online-driver]").forEach(btn=>btn.onclick=async()=>{
+      btn.disabled=true;
+      const userId=btn.dataset.onlineDriver,online=btn.dataset.onlineValue==="true";
+      const {error}=await supabaseClient.from("drivers").update({is_online:online}).eq("user_id",userId);
+      if(error){toast("Could not update driver availability: "+error.message);btn.disabled=false;return;}
+      toast(online?"Driver set online.":"Driver set offline.");
+      await loadAdminDrivers();
+    });
+  }
+  await loadAdminDrivers();
+}
+function escapeHtml(value){
+  return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+}
 home();
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;$("#installBtn").hidden=false;});
 $("#installBtn").onclick=async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$("#installBtn").hidden=true;};
