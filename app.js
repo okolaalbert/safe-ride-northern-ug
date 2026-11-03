@@ -26,10 +26,87 @@ async function checkBackend(){
   }
 }
 checkBackend();
-function home(){app.innerHTML = `
+
+let activeAuthUser = null;
+const SITE_URL = "https://okolaalbert.github.io/safe-ride-northern-ug/";
+async function authGate(role, mode="signup"){
+  const roleLabel = role === "driver" ? "Driver" : "Passenger";
+  const isSignup = mode === "signup";
+  shell(roleLabel + (isSignup ? " registration" : " sign in"), "Create an account or sign in securely using Supabase.", `
+    <div class="tabs">
+      <button class="tab ${isSignup?"active":""}" id="signupTab">Create account</button>
+      <button class="tab ${!isSignup?"active":""}" id="loginTab">Sign in</button>
+    </div>
+    <form id="authForm" class="form-grid">
+      ${isSignup ? `
+      <div class="field full"><label>Full name</label><input id="authName" autocomplete="name" placeholder="Your full name" required maxlength="80"></div>
+      <div class="field full"><label>Telephone number</label><input id="authPhone" type="tel" autocomplete="tel" placeholder="+256 7XX XXX XXX" required maxlength="20"></div>` : ""}
+      <div class="field full"><label>Email address</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required></div>
+      <div class="field full"><label>Password</label><input id="authPassword" type="password" autocomplete="${isSignup?"new-password":"current-password"}" minlength="6" placeholder="At least 6 characters" required></div>
+      <div class="field full"><button class="primary-btn wide" type="submit">${isSignup?"Create account":"Sign in"}</button></div>
+    </form>
+    <div id="authMessage" class="notice"> ${isSignup?"Email verification will be sent to your inbox.":"Use the email and password for your existing account."}</div>
+  `);
+  $("#signupTab").onclick=()=>authGate(role,"signup");
+  $("#loginTab").onclick=()=>authGate(role,"login");
+  $("#authForm").onsubmit=async e=>{
+    e.preventDefault();
+    const message=$("#authMessage");
+    const email=$("#authEmail").value.trim();
+    const password=$("#authPassword").value;
+    const submit=$("#authForm button[type=submit]");
+    submit.disabled=true; submit.textContent="Please wait…";
+    try{
+      if(isSignup){
+        const fullName=$("#authName").value.trim();
+        const phone=$("#authPhone").value.trim();
+        if(!fullName || !phone) throw new Error("Enter your name and telephone number.");
+        const {data,error}=await supabaseClient.auth.signUp({
+          email,password,
+          options:{data:{full_name:fullName,phone,account_type:role},emailRedirectTo:SITE_URL}
+        });
+        if(error) throw error;
+        if(data.session){
+          activeAuthUser=data.user;
+          message.textContent="Account created and signed in. Email verification may still be required.";
+          authSuccess(role,data.user);
+        }else{
+          message.textContent="Registration received. Check your email and open the verification link before signing in.";
+          submit.disabled=false; submit.textContent="Create account";
+        }
+      }else{
+        const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+        if(error) throw error;
+        activeAuthUser=data.user;
+        const savedRole=data.user.user_metadata?.account_type || role;
+        authSuccess(savedRole,data.user);
+      }
+    }catch(err){
+      message.textContent=err.message || "Unable to complete authentication. Please try again.";
+      submit.disabled=false; submit.textContent=isSignup?"Create account":"Sign in";
+    }
+  };
+}
+function authSuccess(role,user){
+  const name=user.user_metadata?.full_name || user.email || "Account";
+  state.user={role,name,phone:user.user_metadata?.phone||""}; save();
+  toast("Signed in successfully.");
+  if(role==="driver") driver(); else passenger();
+}
+async function restoreAuth(){
+  if(!supabaseClient)return;
+  const {data}=await supabaseClient.auth.getSession();
+  if(data.session){
+    activeAuthUser=data.session.user;
+    const role=activeAuthUser.user_metadata?.account_type || "passenger";
+    state.user={role,name:activeAuthUser.user_metadata?.full_name||activeAuthUser.email,phone:activeAuthUser.user_metadata?.phone||""};
+    save();
+  }
+}
+\nfunction home(){app.innerHTML = `
 <section class="welcome"><div class="welcome-copy"><span class="eyebrow">MOVE WITH CONFIDENCE</span><h1>Your journey.<br><em>Your choice.</em></h1><p>Book a boda-boda or taxi with a simple, safer ride experience built for Northern Uganda.</p><div class="trust-points"><span>✓ Clear fare estimates</span><span>✓ Trip status updates</span><span>✓ Local transport options</span></div></div><div class="welcome-art" aria-hidden="true"><div class="sun"></div><div class="road"></div><div class="route-line"></div><div class="pin pin-a">A</div><div class="pin pin-b">B</div><div class="art-label">NORTHERN UGANDA</div></div></section>
 <section class="role-section"><div class="section-heading"><div><span class="eyebrow">GET STARTED</span><h2>How would you like to use Safe Ride?</h2></div><span class="step-count">01 / 02</span></div><div class="role-grid"><button class="role-card" data-role="passenger"><span class="role-icon">↗</span><strong>Book a ride</strong><small>I'm a passenger</small><span class="card-arrow">→</span></button><button class="role-card" data-role="driver"><span class="role-icon">⌁</span><strong>Drive with us</strong><small>I'm a boda or taxi driver</small><span class="card-arrow">→</span></button><button class="role-card admin-card" data-role="admin"><span class="role-icon">▦</span><strong>Admin demo</strong><small>Platform overview</small><span class="card-arrow">→</span></button></div><p class="fine-print">Demonstration mode only. Do not enter real passwords, payment details, or sensitive personal information.</p></section>`;
-app.querySelectorAll("[data-role]").forEach(b=>b.onclick=()=>b.dataset.role==="passenger"?passenger():b.dataset.role==="driver"?driver():admin());}
+app.querySelectorAll("[data-role]").forEach(b=>b.onclick=()=>b.dataset.role==="admin"?admin():authGate(b.dataset.role));}
 function shell(title,sub,body){app.innerHTML=`<section class="panel"><button class="back-btn" id="back">← Back to home</button><div class="panel-head"><div><span class="eyebrow">SAFE RIDE NORTHERN UG</span><h2>${title}</h2><p>${sub}</p></div><span class="tag">DEMO</span></div>${body}</section>` ;$("#back").onclick=home;}
 function fare(type,from,to){const base=type==="Taxi"?5000:1500; const a=(from.length+to.length)%7; return base+a*(type==="Taxi"?1000:500)+ (type==="Taxi"?3000:1000);}
 function passenger(){shell("Book your ride","Enter your route and choose the transport that suits your journey.",`
@@ -52,4 +129,4 @@ $("#tabRides").onclick=()=>{$("#tabRides").classList.add("active");$("#tabDriver
 home();
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;$("#installBtn").hidden=false;});
 $("#installBtn").onclick=async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$("#installBtn").hidden=true;};
-if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
