@@ -48,35 +48,6 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./app.js?v=10"></script>
-  <script>
-    (async function () {
-      const pill = document.querySelector(".demo-pill");
-      if (!pill) return;
-      const url = "https://uiedoohybbtmdcbcwgxm.supabase.co";
-      const key = "sb_publishable_-ZyAW5iuBSIO24D0f54YYw_Yx3HTj-9";
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10000);
-      try {
-        pill.textContent = "Checking database…";
-        const response = await fetch(url + "/rest/v1/profiles?select=user_id&limit=1", {
-          headers: { apikey: key, Authorization: "Bearer " + key },
-          signal: controller.signal
-        });
-        if (!response.ok) {
-          const detail = await response.text();
-          throw new Error("HTTP " + response.status + (detail ? ": " + detail.slice(0, 100) : ""));
-        }
-        pill.textContent = "Database connected";
-        pill.title = "Supabase database is responding.";
-      } catch (error) {
-        pill.textContent = error.name === "AbortError" ? "Database timed out" : "Database connection failed";
-        pill.title = error.message || "Could not reach Supabase.";
-        console.error("Safe Ride database check:", error);
-      } finally {
-        clearTimeout(timer);
-      }
-    })();
-  </script>
+  <script src="./app.js?v=11"></script>
 </body>
 </html>
