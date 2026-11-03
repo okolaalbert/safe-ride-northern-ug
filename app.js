@@ -246,43 +246,98 @@ async function adminDashboard(){
   $("#adminLogout").onclick=async()=>{await supabaseClient.auth.signOut();activeAuthUser=null;state.user=null;save();home();};
   $("#refreshAdmin").onclick=loadAdminDrivers;
   async function loadAdminDrivers(){
-    const list=$("#realAdminList");list.textContent="Loading driver applications…";
-    const [{data:driversData,error:driversError},{data:profilesData,error:profilesError}]=await Promise.all([
-      supabaseClient.from("drivers").select("user_id,vehicle_type,vehicle_registration,verified,is_online").order("user_id"),
-      supabaseClient.from("profiles").select("user_id,full_name,phone,account_type").eq("account_type","driver")
-    ]);
-    if(driversError||profilesError){list.textContent="Could not load applications: "+(driversError?.message||profilesError?.message);return;}
-    const profiles=new Map((profilesData||[]).map(p=>[p.user_id,p]));
-    const rows=(driversData||[]).map(d=>({ ...d, profile:profiles.get(d.user_id)||{} }));
-    $("#adminTotal").textContent=rows.length;
-    $("#adminApproved").textContent=rows.filter(d=>d.verified).length;
-    $("#adminOnline").textContent=rows.filter(d=>d.is_online).length;
-    if(!rows.length){list.innerHTML='<div class="empty">No driver applications have been submitted yet.</div>';return;}
-    list.innerHTML=rows.map(d=>`
+    const list = $("#realAdminList");
+    list.textContent = "Loading driver applications…";
+
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !userData.user) {
+      list.textContent = "Admin session unavailable. Please sign in again.";
+      return;
+    }
+
+    const { data: driversData, error: driversError } = await supabaseClient
+      .from("drivers")
+      .select("*")
+      .order("user_id");
+
+    if (driversError) {
+      list.textContent = "Driver database error: " + driversError.message;
+      return;
+    }
+
+    const { data: profilesData, error: profilesError } = await supabaseClient
+      .from("profiles")
+      .select("user_id,full_name,phone,account_type");
+
+    const profiles = new Map((profilesData || []).map(p => [p.user_id, p]));
+    const rows = (driversData || []).map(d => ({
+      ...d,
+      profile: profiles.get(d.user_id) || {}
+    }));
+
+    $("#adminTotal").textContent = rows.length;
+    $("#adminApproved").textContent = rows.filter(d => d.verified).length;
+    $("#adminOnline").textContent = rows.filter(d => d.is_online).length;
+
+    if (!rows.length) {
+      list.innerHTML = '<div class="empty">No driver records found in the database.</div>';
+      return;
+    }
+
+    list.innerHTML = rows.map(d => `
       <div class="ride-card">
-        <div class="ride-top"><strong>${escapeHtml(d.profile.full_name||"Driver")}</strong><span class="status ${d.verified?"done":""}">${d.verified?"Approved":"Pending approval"}</span></div>
-        <p>${escapeHtml(d.profile.phone||"No phone provided")} · ${escapeHtml(d.vehicle_type||"Vehicle not set")} · ${escapeHtml(d.vehicle_registration||"No registration")}</p>
-        <p><small>Driver account: ${escapeHtml(d.user_id)}</small></p>
-        <div class="button-row">
-          <button class="small-btn good" data-approve-driver="${d.user_id}" data-approve-value="true" ${d.verified?"disabled":""}>Approve driver</button>
-          <button class="small-btn" data-approve-driver="${d.user_id}" data-approve-value="false" ${!d.verified?"disabled":""}>Revoke approval</button>
-          <button class="small-btn" data-online-driver="${d.user_id}" data-online-value="${d.is_online?"false":"true"}" ${!d.verified?"disabled":""}>${d.is_online?"Set offline":"Set online"}</button>
+        <div class="ride-top">
+          <strong>${escapeHtml(d.profile.full_name || "Driver")}</strong>
+          <span class="status ${d.verified ? "done" : ""}">
+            ${d.verified ? "Approved" : "Pending approval"}
+          </span>
         </div>
-      </div>`).join("");
-    list.querySelectorAll("[data-approve-driver]").forEach(btn=>btn.onclick=async()=>{
-      btn.disabled=true;
-      const userId=btn.dataset.approveDriver,approved=btn.dataset.approveValue==="true";
-      const {error}=await supabaseClient.from("drivers").update({verified:approved,is_online:false}).eq("user_id",userId);
-      if(error){toast("Could not update approval: "+error.message);btn.disabled=false;return;}
-      toast(approved?"Driver approved.":"Driver approval revoked.");
+        <p>
+          ${escapeHtml(d.profile.phone || "No phone provided")} ·
+          ${escapeHtml(d.vehicle_type || "Vehicle not set")} ·
+          ${escapeHtml(d.vehicle_registration || "No registration")}
+        </p>
+        <p><small>Driver account: ${escapeHtml(d.user_id)}</small></p>
+        ${profilesError ? '<p><small>Profile details unavailable.</small></p>' : ""}
+        <div class="button-row">
+          <button class="small-btn good" data-approve-driver="${d.user_id}" data-approve-value="true" ${d.verified ? "disabled" : ""}>Approve driver</button>
+          <button class="small-btn" data-approve-driver="${d.user_id}" data-approve-value="false" ${!d.verified ? "disabled" : ""}>Revoke approval</button>
+          <button class="small-btn" data-online-driver="${d.user_id}" data-online-value="${d.is_online ? "false" : "true"}" ${!d.verified ? "disabled" : ""}>${d.is_online ? "Set offline" : "Set online"}</button>
+        </div>
+      </div>
+    `).join("");
+
+    list.querySelectorAll("[data-approve-driver]").forEach(btn => btn.onclick = async () => {
+      btn.disabled = true;
+      const userId = btn.dataset.approveDriver;
+      const approved = btn.dataset.approveValue === "true";
+      const { error } = await supabaseClient
+        .from("drivers")
+        .update({ verified: approved, is_online: false })
+        .eq("user_id", userId);
+      if (error) {
+        toast("Could not update approval: " + error.message);
+        btn.disabled = false;
+        return;
+      }
+      toast(approved ? "Driver approved." : "Driver approval revoked.");
       await loadAdminDrivers();
     });
-    list.querySelectorAll("[data-online-driver]").forEach(btn=>btn.onclick=async()=>{
-      btn.disabled=true;
-      const userId=btn.dataset.onlineDriver,online=btn.dataset.onlineValue==="true";
-      const {error}=await supabaseClient.from("drivers").update({is_online:online}).eq("user_id",userId);
-      if(error){toast("Could not update driver availability: "+error.message);btn.disabled=false;return;}
-      toast(online?"Driver set online.":"Driver set offline.");
+
+    list.querySelectorAll("[data-online-driver]").forEach(btn => btn.onclick = async () => {
+      btn.disabled = true;
+      const userId = btn.dataset.onlineDriver;
+      const online = btn.dataset.onlineValue === "true";
+      const { error } = await supabaseClient
+        .from("drivers")
+        .update({ is_online: online })
+        .eq("user_id", userId);
+      if (error) {
+        toast("Could not update driver availability: " + error.message);
+        btn.disabled = false;
+        return;
+      }
+      toast(online ? "Driver set online." : "Driver set offline.");
       await loadAdminDrivers();
     });
   }
